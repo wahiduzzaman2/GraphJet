@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.twitter.graphjet.algorithms;
 
 import com.twitter.graphjet.bipartite.api.EdgeIterator;
@@ -26,12 +25,17 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 
 public class TweetAuthorFilter extends ResultFilter {
   private LongSet authoredTweets = new LongOpenHashSet();
+  private boolean isTweetAuthorsEmpty = false;
 
+  /**
+   * @param tweetAuthors the list of authors whose tweets will not be filtered. If left empty, no tweet will be filtered.
+   */
   public TweetAuthorFilter(
       LeftIndexedMultiSegmentBipartiteGraph leftIndexedBipartiteGraph,
       LongSet tweetAuthors,
       StatsReceiver statsReceiver) {
     super(statsReceiver);
+    isTweetAuthorsEmpty = tweetAuthors.isEmpty();
     generateAuthoredByUsersNodes(leftIndexedBipartiteGraph, tweetAuthors);
   }
 
@@ -65,6 +69,6 @@ public class TweetAuthorFilter extends ResultFilter {
    */
   @Override
   public boolean filterResult(long resultNode, SmallArrayBasedLongToDoubleMap[] socialProofs) {
-    return !authoredTweets.contains(resultNode);
+    return !isTweetAuthorsEmpty && !authoredTweets.contains(resultNode);
   }
 }
