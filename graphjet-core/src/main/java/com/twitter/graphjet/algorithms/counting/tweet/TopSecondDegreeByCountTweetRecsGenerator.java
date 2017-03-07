@@ -17,7 +17,10 @@
 
 package com.twitter.graphjet.algorithms.counting.tweet;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Set;
 
 import com.google.common.collect.Lists;
 
@@ -28,6 +31,7 @@ import com.twitter.graphjet.algorithms.RecommendationType;
 import com.twitter.graphjet.algorithms.TweetIDMask;
 import com.twitter.graphjet.algorithms.counting.GeneratorHelper;
 import com.twitter.graphjet.hashing.SmallArrayBasedLongToDoubleMap;
+
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
@@ -54,10 +58,6 @@ public final class TopSecondDegreeByCountTweetRecsGenerator {
 
     // handling specific rules of tweet recommendations
     for (NodeInfo nodeInfo : nodeInfoList) {
-      // do not return tweet recommendations with only Tweet social proofs.
-      if (isTweetSocialProofOnly(nodeInfo.getSocialProofs())) {
-        continue;
-      }
       // do not return if size of each social proof is less than minUserSocialProofSize.
       if (isLessThanMinUserSocialProofSize(nodeInfo.getSocialProofs(), validSocialProofs, minUserSocialProofSize) &&
         // do not return if size of each social proof union is less than minUserSocialProofSize.
@@ -138,27 +138,23 @@ public final class TopSecondDegreeByCountTweetRecsGenerator {
     int minUserSocialProofSize) {
     int length = validSocialProofs.length;
     long authorId = getAuthorId(socialProofs);
+
     for (int i = 0; i < length; i++) {
+      // Skip tweet author social proof because its size can be only one
+      if (validSocialProofs[i] == RecommendationRequest.AUTHOR_SOCIAL_PROOF_TYPE) {
+        continue;
+      }
       if (socialProofs[validSocialProofs[i]] != null) {
         int minUserSocialProofThreshold = minUserSocialProofSize;
         if (authorId != -1 && socialProofs[validSocialProofs[i]].contains(authorId)) {
           minUserSocialProofThreshold += 1;
         }
-        if (socialProofs[validSocialProofs[i]].size() >= minUserSocialProofThreshold) {
-          return false;
+        if (socialProofs[validSocialProofs[i]].size() < minUserSocialProofThreshold) {
+          return true;
         }
       }
     }
-    return true;
-  }
-
-  private static boolean isTweetSocialProofOnly(SmallArrayBasedLongToDoubleMap[] socialProofs) {
-    for (int i = 0; i < socialProofs.length; i++) {
-      if (i != RecommendationRequest.AUTHOR_SOCIAL_PROOF_TYPE && socialProofs[i] != null) {
-        return false;
-      }
-    }
-    return true;
+    return false;
   }
 
   // Return the authorId of the Tweet, if the author is in the leftSeedNodesWithWeight; otherwise, return -1.
