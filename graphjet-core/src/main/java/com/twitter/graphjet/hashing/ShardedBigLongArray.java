@@ -1,20 +1,3 @@
-/**
- * Copyright 2016 Twitter. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-
 package com.twitter.graphjet.hashing;
 
 import java.util.Arrays;
@@ -66,7 +49,7 @@ import com.twitter.graphjet.stats.StatsReceiver;
  * NOT true). Together, this ensures that the reader accesses to the objects are always consistent
  * with each other and safe to access by the reader.</p>
  */
-public class ShardedBigIntArray implements BigIntArray {
+public class ShardedBigLongArray implements BigLongArray {
   /**
    * <p>This class encapsulates ALL the state that will be accessed by a reader (refer to the X, Y, Z
    * comment above). The final members are used to guarantee visibility to other threads without
@@ -84,26 +67,26 @@ public class ShardedBigIntArray implements BigIntArray {
    * visible to other threads."</blockquote>
    */
   public static final class ReaderAccessibleInfo {
-    public final int[][] array;
+    public final long[][] array;
 
     /**
      * A new instance is immediately visible to the readers due to publication safety.
      *
      * @param array contains all the array in the pool
      */
-    public ReaderAccessibleInfo(int[][] array) {
+    public ReaderAccessibleInfo(long[][] array) {
       this.array = array;
     }
   }
 
-  // Making the int array preferred size be 256KB ~ size of L2 cache
+  // Making the long array preferred size be 512KB ~ 2 * size of L2 cache
   public static final int PREFERRED_EDGES_PER_SHARD = 1 << 16;
   private static final double SHARD_GROWTH_FACTOR = 1.1;
 
   // This is is the only reader-accessible data
   protected ReaderAccessibleInfo readerAccessibleInfo;
 
-  private final int nullEntry;
+  private final long nullEntry;
   private final int shardLength;
   private final int shardLengthNumBits;
   private final int offsetMask;
@@ -114,7 +97,7 @@ public class ShardedBigIntArray implements BigIntArray {
   private int numStoredEntries;
 
   /**
-   * Reserves the needed memory for a {@link ShardedBigIntArray}, and initializes most of the
+   * Reserves the needed memory for a {@link ShardedBigLongArray}, and initializes most of the
    * objects that would be needed for this graph. Note that actual memory would be allocated as
    * needed, and the amount of memory needed will increase if more nodes arrive than expected.
    *
@@ -127,24 +110,24 @@ public class ShardedBigIntArray implements BigIntArray {
    *                            asked for
    * @param statsReceiver       is used to update storage stats
    */
-  public ShardedBigIntArray(
-      int numExpectedEntries,
-      int minShardSize,
-      int nullEntry,
-      StatsReceiver statsReceiver) {
+  public ShardedBigLongArray(
+    int numExpectedEntries,
+    int minShardSize,
+    long nullEntry,
+    StatsReceiver statsReceiver) {
     int shardSize = Math.max(PREFERRED_EDGES_PER_SHARD, minShardSize);
     // We round shards up to be a power of two
     this.shardLengthNumBits =
-        Math.max(Integer.numberOfTrailingZeros(Integer.highestOneBit(shardSize - 1) << 1), 4);
+      Math.max(Integer.numberOfTrailingZeros(Integer.highestOneBit(shardSize - 1) << 1), 4);
     this.shardLength = 1 << shardLengthNumBits;
     this.offsetMask = shardLength - 1;
     this.nullEntry = nullEntry;
-    StatsReceiver scopedStatsReceiver = statsReceiver.scope("ShardedBigIntArray");
+    StatsReceiver scopedStatsReceiver = statsReceiver.scope("ShardedBigLongArray");
     this.numArrayEntries = scopedStatsReceiver.counter("numArrayEntries");
     numShards = Math.max(numExpectedEntries >> shardLengthNumBits, 1);
     Preconditions.checkArgument(numShards * shardLength < Integer.MAX_VALUE,
-        "Exceeded the max storage capacity for ShardedBigIntArray");
-    readerAccessibleInfo = new ReaderAccessibleInfo(new int[numShards][]);
+      "Exceeded the max storage capacity for ShardedBigLongArray");
+    readerAccessibleInfo = new ReaderAccessibleInfo(new long[numShards][]);
     this.numAllocatedSlotsForEntries = shardLength;
     allocateMemoryForShard(0);
   }
@@ -157,8 +140,8 @@ public class ShardedBigIntArray implements BigIntArray {
   private void expandArray(int shardId) {
     int newNumShards = Math.max((int) Math.ceil(numShards * SHARD_GROWTH_FACTOR), shardId + 1);
     Preconditions.checkArgument(newNumShards * shardLength < Integer.MAX_VALUE,
-        "Exceeded the max storage capacity for ShardedBigIntArray");
-    int[][] newArray = new int[newNumShards][];
+      "Exceeded the max storage capacity for ShardedBigIntArray");
+    long[][] newArray = new long[newNumShards][];
     // Important: the arraycopy assumes that the size of each shard remains same
     System.arraycopy(readerAccessibleInfo.array, 0, newArray, 0, readerAccessibleInfo.array.length);
     // This flushes all the reader-accessible data *together* to all threads: the readers are safe
@@ -168,7 +151,7 @@ public class ShardedBigIntArray implements BigIntArray {
   }
 
   private void allocateMemoryForShard(int shardId) {
-    int[] newShard = new int[shardLength];
+    long[] newShard = new long[shardLength];
     if (nullEntry != 0) {
       Arrays.fill(newShard, nullEntry);
     }
@@ -177,7 +160,7 @@ public class ShardedBigIntArray implements BigIntArray {
   }
 
   @Override
-  public void addEntry(int entry, int position) {
+  public void addEntry(long entry, int position) {
     int shard = position >> shardLengthNumBits;
     int offset = position & offsetMask;
     // we may need more shards
@@ -188,13 +171,14 @@ public class ShardedBigIntArray implements BigIntArray {
     if (readerAccessibleInfo.array[shard] == null) {
       allocateMemoryForShard(shard);
     }
-    readerAccessibleInfo.array[shard][offset] = entry; // int writes are atomic
+    // (Jerry To Do) long writes are not necessarily atomic in JVM
+    readerAccessibleInfo.array[shard][offset] = entry;
     numStoredEntries++;
     numArrayEntries.incr();
   }
 
   @Override
-  public void arrayCopy(int[] src, int srcPos, int desPos, int length, boolean updateStats) {
+  public void arrayCopy(long[] src, int srcPos, int desPos, int length, boolean updateStats) {
     int shard = desPos >> shardLengthNumBits;
     int offset = desPos & offsetMask;
     // we may need more shards
@@ -244,7 +228,7 @@ public class ShardedBigIntArray implements BigIntArray {
   }
 
   @Override
-  public int getEntry(int position) {
+  public long getEntry(int position) {
     int shard = position >> shardLengthNumBits;
     int offset = position & offsetMask;
     // we may need more shards
@@ -255,7 +239,7 @@ public class ShardedBigIntArray implements BigIntArray {
   }
 
   @Override
-  public int incrementEntry(int position, int delta) {
+  public long incrementEntry(int position, long delta) {
     int shard = position >> shardLengthNumBits;
     int offset = position & offsetMask;
     // we may need more shards
@@ -267,7 +251,7 @@ public class ShardedBigIntArray implements BigIntArray {
     return readerAccessibleInfo.array[shard][offset];
   }
 
-  public int[] getShard(int position) {
+  public long[] getShard(int position) {
     int shard = position >> shardLengthNumBits;
 
     return readerAccessibleInfo.array[shard];
