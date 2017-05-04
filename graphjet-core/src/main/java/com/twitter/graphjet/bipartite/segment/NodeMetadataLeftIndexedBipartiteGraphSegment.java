@@ -116,6 +116,7 @@ public abstract class NodeMetadataLeftIndexedBipartiteGraphSegment
     long leftNode,
     long rightNode,
     byte edgeType,
+    long edgeMetadata,
     int[][] leftNodeMetadata,
     int[][] rightNodeMetadata
   ) {
@@ -140,7 +141,7 @@ public abstract class NodeMetadataLeftIndexedBipartiteGraphSegment
     // so that node mappings are visible if the edge is visible
 
     // Now we can add the edge
-    updateEdgePool(leftNodeInternalId, rightNodeInternalId, edgeType);
+    updateEdgePool(leftNodeInternalId, rightNodeInternalId, edgeType, edgeMetadata);
 
     // Finally, explicitly flush the edge write so that the edge is visible to the readers
     currentNumEdges++;
