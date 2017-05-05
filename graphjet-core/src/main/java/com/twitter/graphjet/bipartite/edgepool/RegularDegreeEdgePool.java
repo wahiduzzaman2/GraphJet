@@ -225,6 +225,22 @@ public class RegularDegreeEdgePool implements EdgePool {
   }
 
   /**
+   * Get a specified edge metadata for the node: note that it is the caller's responsibility to
+   * check that the edge number is within the degree bounds.
+   *
+   * @param node         is the node whose edges are being requested
+   * @param edgeNumber   is the required edge number
+   * @return the requested edge metadata
+   */
+  protected long getNodeEdgeMetadata(int node, int edgeNumber) {
+    long nodeInfo = getNodeInfo(node);
+    if (edgeNumber > getNodeDegreeFromNodeInfo(nodeInfo)) {
+      return -1;
+    }
+    return getNumberedEdgeMetadata(getNodePositionFromNodeInfo(nodeInfo), edgeNumber);
+  }
+
+  /**
    * Get a specified edge for the node: note that it is the caller's responsibility to check that
    * the edge number is within the degree bounds.
    *
@@ -234,6 +250,18 @@ public class RegularDegreeEdgePool implements EdgePool {
    */
   protected int getNumberedEdge(int position, int edgeNumber) {
     return readerAccessibleInfo.edges.getEntry(position + edgeNumber);
+  }
+
+  /**
+   * Get the metadata of a specified edge for the node: note that it is the caller's responsibility
+   * to check that the edge number is within the degree bounds.
+   *
+   * @param position    is the position index for the node
+   * @param edgeNumber  is the required edge number
+   * @return the requested edge metadata
+   */
+  protected long getNumberedEdgeMetadata(int position, int edgeNumber) {
+    return readerAccessibleInfo.metadata.getEntry(position + edgeNumber);
   }
 
   @Override

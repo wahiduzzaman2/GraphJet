@@ -41,6 +41,7 @@ public class MultiSegmentRandomIterator<T extends LeftIndexedBipartiteGraphSegme
   private int numSamplesNeeded;
   private Random random;
   private long[] samples;
+  private long[] sampleEdgeMetadata;
   private byte[] sampleEdgeTypes;
 
   /**
@@ -99,6 +100,7 @@ public class MultiSegmentRandomIterator<T extends LeftIndexedBipartiteGraphSegme
     }
     // now, get the required number of random edges from each non-empty segment
     samples = new long[numSamplesNeeded];
+    sampleEdgeMetadata = new long[numSamplesNeeded];
     sampleEdgeTypes = new byte[numSamplesNeeded];
     int sampledCount = 0;
     for (int segmentId : numSamplesInSegment.keySet()) {
@@ -110,6 +112,7 @@ public class MultiSegmentRandomIterator<T extends LeftIndexedBipartiteGraphSegme
           random);
       while (segmentRandomIterator.hasNext()) {
         samples[sampledCount] = segmentRandomIterator.nextLong();
+        sampleEdgeMetadata[sampledCount] = segmentRandomIterator.currentMetadata();
         sampleEdgeTypes[sampledCount] = segmentRandomIterator.currentEdgeType();
         sampledCount++;
       }
@@ -141,6 +144,11 @@ public class MultiSegmentRandomIterator<T extends LeftIndexedBipartiteGraphSegme
   @Override
   public byte currentEdgeType() {
     return sampleEdgeTypes[numSamplesReturned - 1];
+  }
+
+  @Override
+  public long currentMetadata() {
+    return sampleEdgeMetadata[numSamplesReturned - 1];
   }
 
   @Override
