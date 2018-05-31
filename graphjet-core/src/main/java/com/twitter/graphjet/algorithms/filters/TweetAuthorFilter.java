@@ -1,5 +1,5 @@
 /**
- * Copyright 2016 Twitter. All rights reserved.
+ * Copyright 2018 Twitter. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,34 +17,70 @@
 package com.twitter.graphjet.algorithms.filters;
 
 import com.twitter.graphjet.algorithms.RecommendationRequest;
-import com.twitter.graphjet.bipartite.api.EdgeIterator;
 import com.twitter.graphjet.bipartite.LeftIndexedMultiSegmentBipartiteGraph;
+import com.twitter.graphjet.bipartite.api.EdgeIterator;
 import com.twitter.graphjet.hashing.SmallArrayBasedLongToDoubleMap;
+import com.twitter.graphjet.stats.Counter;
 import com.twitter.graphjet.stats.StatsReceiver;
+
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 
+/**
+ * This filter filters tweets by tweet authors, depending on whether the node author is
+ * on the blacklist or the whitelist.
+ *
+ * - For whitelist authors, only tweets from the whitelisted authors will pass the filter.
+ *   However, if the whitelist is empty, the filter will pass all tweets, and only filter from the blacklist
+ * - For blacklist authors, tweets authored by blacklisted authors will be filtered.
+ */
 public class TweetAuthorFilter extends ResultFilter {
-  private LongSet authoredTweets = new LongOpenHashSet();
-  private boolean isTweetAuthorsEmpty = false;
 
-  /**
-   * @param tweetAuthors the list of authors whose tweets will not be filtered. If left empty, no tweet will be filtered.
-   */
+  private boolean isIgnoreWhitelist;
+  private LongSet whitelistedTweets;
+  private LongSet blacklistedTweets;
+
+  private Counter blacklistFilterCount = scopedStatsReceiver.counter("blacklist_filtered");
+  private Counter whitelistFilterCount = scopedStatsReceiver.counter("whitelist_filtered");
+
   public TweetAuthorFilter(
       LeftIndexedMultiSegmentBipartiteGraph leftIndexedBipartiteGraph,
-      LongSet tweetAuthors,
+      LongSet whitelistTweetAuthors,
+      LongSet blacklistTweetAuthors,
       StatsReceiver statsReceiver) {
     super(statsReceiver);
-    isTweetAuthorsEmpty = tweetAuthors.isEmpty();
-    generateAuthoredByUsersNodes(leftIndexedBipartiteGraph, tweetAuthors);
+    this.isIgnoreWhitelist = whitelistTweetAuthors.isEmpty();
+    if (this.isIgnoreWhitelist) {
+      this.whitelistedTweets = new LongOpenHashSet();
+      this.blacklistedTweets = getTweetsByAuthors(leftIndexedBipartiteGraph, blacklistTweetAuthors);
+    } else {
+      // Performance hack. Remove blacklisted authors from the whitelist, and only check whitelist
+      LongSet dedupedWhitelistAuthors = dedupWhitelistAuthors(whitelistTweetAuthors, blacklistTweetAuthors);
+      this.whitelistedTweets = getTweetsByAuthors(leftIndexedBipartiteGraph, dedupedWhitelistAuthors);
+      this.blacklistedTweets = new LongOpenHashSet();
+    }
   }
 
-  private void generateAuthoredByUsersNodes(
+  /**
+   * Remove whitelist authors that exist in the blacklist to remove redundant graph traversal
+   */
+  private LongSet dedupWhitelistAuthors(
+      LongSet whitelistTweetAuthors,
+      LongSet blacklistTweetAuthors) {
+
+    whitelistTweetAuthors.removeAll(blacklistTweetAuthors);
+    return whitelistTweetAuthors;
+  }
+
+  /**
+   * Return the list of tweets authored by the input list of users
+   */
+  private LongSet getTweetsByAuthors(
       LeftIndexedMultiSegmentBipartiteGraph leftIndexedBipartiteGraph,
       LongSet tweetAuthors) {
-    for (long leftNode: tweetAuthors) {
-      EdgeIterator edgeIterator = leftIndexedBipartiteGraph.getLeftNodeEdges(leftNode);
+    LongSet authoredTweets = new LongOpenHashSet();
+    for (long authorId: tweetAuthors) {
+      EdgeIterator edgeIterator = leftIndexedBipartiteGraph.getLeftNodeEdges(authorId);
       if (edgeIterator == null) {
         continue;
       }
@@ -59,17 +95,33 @@ public class TweetAuthorFilter extends ResultFilter {
         }
       }
     }
+    return authoredTweets;
+  }
+
+  private boolean isFilteredByWhitelist(long tweetId) {
+    if (this.isIgnoreWhitelist) {
+      return false; // If the whitelist is empty, filter nothing
+    }
+    boolean isFiltered = !whitelistedTweets.contains(tweetId);
+    if (isFiltered) {
+      whitelistFilterCount.incr();
+    }
+    return isFiltered;
+  }
+
+  private boolean isFilteredByBlacklist(long tweetId) {
+    boolean isFiltered = blacklistedTweets.contains(tweetId);
+    if (isFiltered) {
+      blacklistFilterCount.incr();
+    }
+    return isFiltered;
   }
 
   @Override
   public void resetFilter(RecommendationRequest request) {}
 
-  /**
-   * @return true if resultNode is not in the authoredByUsersNodes, which means that the
-   * resultNode was not authored by the specified users.
-   */
   @Override
   public boolean filterResult(long resultNode, SmallArrayBasedLongToDoubleMap[] socialProofs) {
-    return !isTweetAuthorsEmpty && !authoredTweets.contains(resultNode);
+    return isFilteredByWhitelist(resultNode) || isFilteredByBlacklist(resultNode);
   }
 }
